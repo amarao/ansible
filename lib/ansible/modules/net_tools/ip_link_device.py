@@ -65,7 +65,7 @@ options:
 
     type:
         type: str
-        choices: [veth, vlan, vxlan, gre]
+        choices: [veth, vlan, vxlan, gre, gretap]
         description:
             - Type of a new interface to add or delete
             - Can be specified instead of I(name) or I(group_id)
@@ -255,8 +255,8 @@ options:
                 type: str
                 choises: [set, unset, inherit]
                 description:
-                    - Value for DON'T FRAGMENT flag.
-                    - 'inherit' value copy it from original IP header.
+                    - Value for do not fragment flag.
+                    - C(inherit) value copy it from original IP header.
                     - By default the kernel does not set it.
 
             flowlabel:
@@ -452,7 +452,7 @@ options:
             ignore_df:
                 type: bool
                 description:
-                    - Ignore DF (don't fragment) flag on tunneled packets.
+                    - Ignore DF (do not fragment) flag on tunneled packets.
 
             dev:
                 type: str
@@ -464,10 +464,10 @@ options:
                 choices: [fou, gue, none]
                 description:
                     - Type of secondary encapsulation
-                    - 'fou' is 'Foo over UDP', 'gue' is 'Generic UDP
+                    - C(fou) is 'Foo over UDP', C(gue) is 'Generic UDP
                       encapsulation'.
+
             encap_sport:
-                type: str
                 type: str
                 description:
                     - Source port for UDP encapsulation.
@@ -573,7 +573,7 @@ options:
             ignore_df:
                 type: bool
                 description:
-                    - Ignore DF (don't fragment) flag on tunneled packets.
+                    - Ignore DF (do not fragment) flag on tunneled packets.
 
             dev:
                 type: str
@@ -585,8 +585,9 @@ options:
                 choices: [fou, gue, none]
                 description:
                     - Type of secondary encapsulation
-                    - 'fou' is 'Foo over UDP', 'gue' is 'Generic UDP
+                    - C(fou) is 'Foo over UDP', C(gue) is 'Generic UDP
                       encapsulation'.
+
             encap_sport:
                 type: str
                 description:
@@ -687,7 +688,7 @@ __metaclass__ = type
 BOOLS = ['off', 'on']
 
 
-type_commands = {
+TYPE_COMMANDS = {
     'vlan': {
         'protocol': lambda proto: ['protocol', proto],
         'id': lambda id: ['id', str(id)],
@@ -730,7 +731,7 @@ type_commands = {
         'gpe': lambda flag: [None, 'gpe'][flag],
     },
     'veth': {
-        'peer_name': lambda arg: ['peer_name', arg],
+        'peer_name': lambda arg: ['peer', 'name', arg],
     },
     'gre': {
         'remote': lambda ip: ['remote', ip],
@@ -786,7 +787,7 @@ class LinkDevice(object):
         'name', 'namespace', 'group_id', 'state', 'type', 'link',
     ]
 
-    knobs_cmds = {  # module paramtes which are directly translates to ip args
+    knob_cmds = {  # module paramtes which are directly translates to ip args
         'txqueuelen': lambda len: ['tqueuelen', str(len)],
         'address': lambda addr: ['address', addr],
         'broadcast': lambda addr: ['broadcast', addr],
@@ -802,10 +803,8 @@ class LinkDevice(object):
         self.module = module
         self.check_mode = module.check_mode
         self.knobs = {}
-        self.type_params = {}
-        for typeopt in type_commands.keys() + ['type_options']:
-            if typeopt in module.params:
-                self.type_params = module.params[typeopt]
+        self.type_options = {}
+
         for knob in self.knob_cmds.keys():
             self.knobs[knob] = module.params[knob]
         for param in self.params_list:
@@ -820,8 +819,23 @@ class LinkDevice(object):
             self.id_postfix = ['group', self.group_id]
 
         if self.state == 'present' and not self.type:
+            self.module.fail_json(msg=to_text('State=present requires type'))
+        self.type_options = (
+            module.params.get(self.type + '_options') or
+            module.params.get('type_options') or
+            {}
+        )
+        self._validate_type_options()
+
+    def _validate_type_options(self):
+        possible_type_options = set(TYPE_COMMANDS[self.type].keys())
+        type_options = set(self.type_options.keys())
+        unknown_type_options = type_options - possible_type_options
+        if unknown_type_options:
             self.module.fail_json(
-                msg=to_text('State=present requires type')
+                msg=to_text('Unknown option(s) for type %s: %s' % (
+                    self.type, ', '.join(unknown_type_options)
+                ))
             )
 
     def _exec(self, namespace, cmd, not_found_is_ok=False):
@@ -860,14 +874,15 @@ class LinkDevice(object):
     def _common_args(self):
         args = []
         for knob_name, knob_value in self.knobs.items():
-            args.extend(self.knob_cmds[knob_name](knob_value))
+            if knob_value:
+                args.extend(self.knob_cmds[knob_name](knob_value))
         return args
 
     def _type_args(self):
-        args = []
-        typecmd = type_commands[self.type]
+        args = ['type', self.type]
+        typecmd = TYPE_COMMANDS[self.type]
         for opt_name, opt_value in self.type_options.items():
-            if opt_value is not None:
+            if opt_value:
                 args.extend(typecmd[opt_name](opt_value))
         return args
 
@@ -903,8 +918,26 @@ def main():
         argument_spec={
             'name': {'aliases': ['device']},
             'group_id': {},
-            'state': {'choices': ['present', 'absent']},
             'namespace': {},
+            'state': {'choices': ['present', 'absent'], 'required': True},
+            'type': {'choices': ['veth', 'vlan', 'vxlan', 'gre', 'gretap']},
+            'link': {},
+            'txqueuelen': {'type': 'int'},
+            'address': {},
+            'broadcast': {},
+            'mtu': {'type': 'int'},
+            'index': {'type': 'int'},
+            'numtxqueues': {'type': 'int'},
+            'numrxqueues': {'type': 'int'},
+            'gso_max_size': {'type': 'int'},
+            'gso_max_segs': {'type': 'int'},
+            'veth_options': {'type': 'dict'},
+            'vlan_options': {'type': 'dict'},
+            'vxlan_options': {'type': 'dict'},
+            'gre_options': {'type': 'dict'},
+            'gretap_options': {'type': 'dict'},
+            'type_options': {'type': 'dict'},
+
         },
         supports_check_mode=True,
         mutually_exclusive=[['group_id', 'group'], ['name', 'group_id']],
