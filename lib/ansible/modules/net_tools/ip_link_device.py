@@ -365,6 +365,7 @@ options:
         description:
             - Options, specific for I(type)=C(gre).
             - Should not be used for any other type.
+            - Secondary encapsulation options (fou/gue) are not supported.
         contains:
             remote:
                 type: str
@@ -459,31 +460,6 @@ options:
                 description:
                     - Name of the interface to use for endpoint communications.
 
-            encap:
-                type: str
-                choices: [fou, gue, none]
-                description:
-                    - Type of secondary encapsulation
-                    - C(fou) is 'Foo over UDP', C(gue) is 'Generic UDP
-                      encapsulation'.
-
-            encap_sport:
-                type: str
-                description:
-                    - Source port for UDP encapsulation.
-                    - Can be a number or 'auto'.
-
-            encap_csum:
-                type: bool
-                description:
-                    - Enable checksums for secondary encapsulation.
-
-            encap_remcsum:
-                type: bool
-                description:
-                    - Use Remote Checksum Offload for GUE secondary
-                      encapsulation.
-
             external:
                 type: bool
                 description:
@@ -495,6 +471,7 @@ options:
         description:
             - Options, specific for I(type)=C(gretap).
             - Should not be used for any other type.
+            - Secondary encapsulation options (fou/gue) are not supported.
         contains:
             remote:
                 type: str
@@ -579,31 +556,6 @@ options:
                 type: str
                 description:
                     - Name of the interface to use for endpoint communications.
-
-            encap:
-                type: str
-                choices: [fou, gue, none]
-                description:
-                    - Type of secondary encapsulation
-                    - C(fou) is 'Foo over UDP', C(gue) is 'Generic UDP
-                      encapsulation'.
-
-            encap_sport:
-                type: str
-                description:
-                    - Source port for UDP encapsulation.
-                    - Can be a number or 'auto'.
-
-            encap_csum:
-                type: bool
-                description:
-                    - Enable checksums for secondary encapsulation.
-
-            encap_remcsum:
-                type: bool
-                description:
-                    - Use Remote Checksum Offload for GUE secondary
-                      encapsulation.
 
             external:
                 type: bool
@@ -697,8 +649,12 @@ TYPE_COMMANDS = {
         'mvrp': lambda flag: ['mvrp', BOOLS[flag]],
         'loose_binding': lambda flag: ['loose_binding', BOOLS[flag]],
         'bridge_binding': lambda flag: ['bridge_binding', BOOLS[flag]],
-        'ingress_qos_map': lambda map: ['ingress-qos-map', ' '.join(map)],
-        'egress_qos_map': lambda map: ['egress-qos-map', ' '.join(map)],
+        # man ip says that 'The format is FROM:TO with muliple mappings
+        # separated by spaces.
+        # experiments shows that each mapping should be a separate
+        # argument
+        'ingress_qos_map': lambda map: ['ingress-qos-map'] + map,
+        'egress_qos_map': lambda map: ['egress-qos-map'] + map,
     },
     'vxlan': {
         'id': lambda id: ['id', str(id)],
@@ -738,9 +694,9 @@ TYPE_COMMANDS = {
         'local': lambda ip: ['local', ip],
         'iseq': lambda flag: [['noiseq', 'iseq'][flag]],
         'oseq': lambda flag: [['nooseq', 'oseq'][flag]],
-        'ikey': lambda key: [['noikey'] if key == 'no' else ['ikey', key]],
-        'okey': lambda key: [['nookey'] if key == 'no' else ['okey', key]],
-        'key': lambda key: [['nokey'] if key == 'no' else ['key', key]],
+        'ikey': lambda key: ['noikey'] if key == 'no' else ['ikey', str(key)],
+        'okey': lambda key: ['nookey'] if key == 'no' else ['okey', str(key)],
+        'key': lambda key: ['nokey'] if key == 'no' else ['key', str(key)],
         'icsum': lambda flag: [['noicsum', 'icsum'][flag]],
         'ocsum': lambda flag: [['noocsum', 'ocsum'][flag]],
         'csum': lambda flag: [['nocsum', 'csum'][flag]],
@@ -749,10 +705,6 @@ TYPE_COMMANDS = {
         'pmtudisc': lambda flag: [['nopmtudisc', 'nopmtudisc'][flag]],
         'ignore_df': lambda flag: [['noignore-df', 'ignore-df'][flag]],
         'dev': lambda dev: ['dev', dev],
-        'encap': lambda encap: ['encap', encap],
-        'encap_sport': lambda port: ['encap-sport', port],
-        'encap_csum': lambda flag: [['noencap-csum', 'encap-csum'][flag]],
-        'encap_remcsum': lambda fl: [['noencap-remcsum', 'encap-remcsum'][fl]],
         'external': lambda flag: [['external'] if flag else []],
     },
     'gretap': {
@@ -760,9 +712,9 @@ TYPE_COMMANDS = {
         'local': lambda ip: ['local', ip],
         'iseq': lambda flag: [['noiseq', 'iseq'][flag]],
         'oseq': lambda flag: [['nooseq', 'oseq'][flag]],
-        'ikey': lambda key: [['noikey'] if key == 'no' else ['ikey', key]],
-        'okey': lambda key: [['nookey'] if key == 'no' else ['okey', key]],
-        'key': lambda key: [['nokey'] if key == 'no' else ['key', key]],
+        'ikey': lambda key: ['noikey'] if key == 'no' else ['ikey', str(key)],
+        'okey': lambda key: ['nookey'] if key == 'no' else ['okey', str(key)],
+        'key': lambda key: ['nokey'] if key == 'no' else ['key', str(key)],
         'icsum': lambda flag: [['noicsum', 'icsum'][flag]],
         'ocsum': lambda flag: [['noocsum', 'ocsum'][flag]],
         'csum': lambda flag: [['nocsum', 'csum'][flag]],
@@ -771,10 +723,6 @@ TYPE_COMMANDS = {
         'pmtudisc': lambda flag: [['nopmtudisc', 'nopmtudisc'][flag]],
         'ignore_df': lambda flag: [['noignore-df', 'ignore-df'][flag]],
         'dev': lambda dev: ['dev', dev],
-        'encap': lambda encap: ['encap', encap],
-        'encap_sport': lambda port: ['encap-sport', port],
-        'encap_csum': lambda flag: [['noencap-csum', 'encap-csum'][flag]],
-        'encap_remcsum': lambda fl: [['noencap-remcsum', 'encap-remcsum'][fl]],
         'external': lambda flag: [['external'] if flag else []],
     },
 }
@@ -788,7 +736,7 @@ class LinkDevice(object):
     ]
 
     knob_cmds = {  # module paramtes which are directly translates to ip args
-        'txqueuelen': lambda len: ['tqueuelen', str(len)],
+        'txqueuelen': lambda len: ['txqueuelen', str(len)],
         'address': lambda addr: ['address', addr],
         'broadcast': lambda addr: ['broadcast', addr],
         'mtu': lambda mtu: ['mtu', str(mtu)],
@@ -820,12 +768,13 @@ class LinkDevice(object):
 
         if self.state == 'present' and not self.type:
             self.module.fail_json(msg=to_text('State=present requires type'))
-        self.type_options = (
-            module.params.get(self.type + '_options') or
-            module.params.get('type_options') or
-            {}
-        )
-        self._validate_type_options()
+        if self.state == 'present':
+            self.type_options = (
+                module.params.get(self.type + '_options') or
+                module.params.get('type_options') or
+                {}
+            )
+            self._validate_type_options()
 
     def _validate_type_options(self):
         possible_type_options = set(TYPE_COMMANDS[self.type].keys())
@@ -845,6 +794,8 @@ class LinkDevice(object):
                 ['ip', 'netns', 'exec', namespace] + cmd,
                 not_found_is_ok
             )
+        # if self.type=='gre' and 'add' in cmd:
+        #     self.module.fail_json(msg=to_text(cmd))
         rc, out, err = self.module.run_command(cmd)
         if rc != 0:
             if not_found_is_ok:
