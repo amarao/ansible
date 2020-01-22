@@ -1,0 +1,316 @@
+- become: true
+  block:
+    - name: Check if ip binary is present
+      command: ip -V
+      changed_when: false
+      failed_when: false
+      register: ip_ver
+    - name: Ensure iproute2 is present
+      become: true
+      package: name=iproute2 state=present
+      when: ip_ver.rc != 0  # faster this way, as we skip python-apt and apt update
+
+
+    # TEST1: Assign IPv4 address on interface
+    # stages:
+    # - Pre: create veth in namespace
+    # - Try to assin address in check_mode
+    # - confirm changed from module
+    # - confirm no changes on real veth
+    # - run the module for real with the same parameters
+    # - confirm changes
+    # - confirm changes on real veth
+    # - confirm 'present' idempotency
+    # - delete address in check_mode
+    # - confirm changes from module
+    # - confirm changes on real veth
+    # - confirm 'absent' idempotency
+    # - Post: delete veth
+    - name: TEST1 - assign and deassign IP
+      become: true
+      block:
+        - name: TEST1, preparation, namespace
+          ip_netns: name=veth42_ns state=present
+        - name: TEST1, preparation, create veth
+          command: ip net exec veth42_ns ip link add dev veth42 type veth
+
+        - name: TEST1, check_mode for assiging address
+          ip_address: name=veth42 address=192.168.0.1 namespace=veth42_ns
+          check_mode: true
+          register: module_res
+        - name: TEST1, assert module output
+          assert:
+            that:
+              - module_res.changed
+        - name: TEST1, get and check real result that no address was assigned
+          command: ip net exec veth42_ns ip -o address show
+          register: command_res
+          failed_when: "'192.168.0.1' in command_res.stdout"
+
+        - name: TEST1,  assign ipv4
+          ip_address: name=veth42 address=192.168.0.1 namespace=veth42_ns
+          register: module_res
+        - name: TEST1, check module results
+          assert:
+            that:
+              - module_res.changed
+        - name: TEST1 get results
+          command: ip net exec veth42_ns ip -o address show
+          register: command_res
+          failed_when: "'192.168.0.1' not in command_res.stdout"
+
+        - name: TEST1, Run second time
+          ip_address: name=veth42 address=192.168.0.1 namespace=veth42_ns
+          register: module_res
+        - name: TEST1, assert idempotency
+          assert:
+            that:
+              - not module_res.changed
+
+        - name: TEST1, Run state=absent in check_mode
+          ip_address: device=veth42 address=192.168.0.1 state=absent namespace=veth42_ns
+          check_mode: true
+          register: module_res
+        - name: TEST1, assert status for check_mode
+          assert:
+            that:
+              - module_res.changed
+
+        - name: TEST1, check if address is still there after delete in check_mode
+          command: ip net exec veth42_ns ip -o address show
+          failed_when: "'192.168.0.1' not in command_res.stdout"
+
+        - name: TEST1, Run state=absent for real
+          ip_address: device=veth42 address=192.168.0.1 state=absent namespace=veth42_ns
+          register: module_res
+
+        - name: TEST1, assert delete results
+          assert:
+            that:
+              - module_res.changed
+
+        - name: TEST1, check if address is still there after real state=absent
+          command: ip net exec veth42_ns ip -o address show
+          register: command_res
+          failed_when: "'192.168.0.1' in command_res.stdout"
+
+        - name: TEST1, absent idempotency
+          ip_address: device=veth42 address=192.168.0.1 state=absent namespace=veth42_ns
+          register: module_res
+
+        - name: TEST1, assert delete results
+          assert:
+            that:
+              - not module_res.changed
+
+      always:
+        - name: TEST1, cleanup
+          command: ip net exec veth42_ns ip link del dev veth42
+          failed_when: false
+        - name: TEST1, cleanup
+          ip_netns: name=veth42_ns state=absent
+
+
+    # TEST2: Assign IPv4 address on interface with all options possible
+    # stages:
+    # - Pre: create veth
+    # - assign IP
+    # - confirm changed from module
+    # - confirm changes on real veth
+    # - Post: delete veth
+    - name: TEST2 - assign and deassign IP with many options
+      become: true
+      block:
+        - name: TEST2, preparation, create ns
+          ip_netns: name=veth44_ns state=present
+        - name: TEST2, preparation, veth
+          command: ip net exec veth44_ns ip link add dev veth44 type veth
+
+        - name: TEST2, assign tricky address
+          ip_address:
+            device: veth44
+            namespace: veth44_ns
+            address: 30.30.30.1  # expect to have /32 here
+            peer: 30.30.30.2
+            broadcast: 30.30.30.30
+            label: veth44:33
+            scope: link
+            metric: 42
+            valid_lft: '2999'
+            preferred_lft: '1999'
+          register: module_res
+
+        - name: TEST2 assert changes in module
+          assert:
+            that:
+              - module_res.changed
+
+        - name: TEST2, get real output
+          command: ip net exec veth44_ns ip -o addr show dev veth44
+          register: command_res
+
+        - name: TEST2, assert real results
+          assert:
+            that:
+              - "'30.30.30.1' in command_res.stdout"
+              - "'scope link' in command_res.stdout"
+              - "'peer 30.30.30.2/32' in command_res.stdout"
+              - "'valid_lft 299' in command_res.stdout"
+              - "'preferred_lft 199' in command_res.stdout"
+              - "'metric 42' in command_res.stdout"
+              - "'veth44:33' in command_res.stdout"
+              - "'brd 30.30.30.30' in command_res.stdout"
+
+      always:
+        - name: TEST2, cleanup
+          command: ip net exec veth44_ns ip link del dev veth44
+          failed_when: false
+        - name: TEST2, cleanup ns
+          ip_netns: name=veth44_ns state=absent
+
+    # TEST3: Assign IPv6 with all non-standard options
+    # stages:
+    # - Pre: create veth
+    # - assign IPv6
+    # - confirm changed from module
+    # - confirm changes on real veth
+    # - Post: delete veth
+    - name: TEST2 - assign and deassign IP with many options
+      become: true
+      block:
+        - name: TEST2, preparation, create ns
+          ip_netns: name=veth44_ns state=present
+        - name: TEST2, preparation, veth
+          command: ip net exec veth44_ns ip link add dev veth44 type veth
+      always:
+        - name: TEST2, cleanup
+          command: ip net exec veth44_ns ip link del dev veth44
+          failed_when: false
+        - name: TEST2, cleanup ns
+          ip_netns: name=veth44_ns state=absent
+
+    # TEST4: Assign few ipv4 and ipv6 addresses and remove them one by one.
+    # stages:
+    # - Pre: create veth
+    # - assign few IPv4
+    # - assign few IPv6
+    # - confirm result
+    # - deassign one IPv4 and one IPv6
+    # - confirm result
+    # - flush all other IPs in check_mode
+    # - assert module changes
+    # - assert no changes for real
+    # - flush all other IPs
+    # - assert module changes
+    # - get and assert no addresses left
+    # - flush again in check mode
+    # - assert no changes
+    # - flush again for real
+    # - assert no changes
+    # - Post: delete veth
+    - name: TEST4 - assign and deassign IP with many options
+      become: true
+      block:
+        - name: TEST4, preparation, create ns
+          ip_netns: name=veth48_ns state=present
+        - name: TEST4, preparation, veth
+          command: ip net exec veth48_ns ip link add dev veth48 type veth
+
+        - name: TEST4, assign batch of ipv4
+          ip_address: device=veth48 namespace=veth48_ns address={{ item }}
+          loop:
+            - 30.1.1.1
+            - 30.2.2.2/24
+            - 30.3.3.3
+        - name: TEST4, assign batch of ipv4
+          ip_address: device=veth48 namespace=veth48_ns address={{ item }}
+          loop:
+            - 2606:4700::6811:b055
+            - 2606:4700::6811:af55/128
+            - 2606:4701::1/32
+        - name: TEST4, Get real output
+          command: ip net exec veth48_ns ip -o addr show dev veth48
+          register: command_res
+        - name: TEST4, assert result of adding addresses
+          assert:
+            that:
+              - '"30.1.1.1/32" in command_res.stdout'
+              - "'30.2.2.2/24' in command_res.stdout"
+              - "'30.3.3.3/32' in command_res.stdout"
+              - "'2606:4700::6811:b055/128' in command_res.stdout"
+              - "'2606:4700::6811:af55/128' in command_res.stdout"
+              - "'2606:4701::1/32' in command_res.stdout"
+        - name: TEST4, Remove one IPv4 and one IPv6 address
+          ip_address: device=veth48 namespace=veth48_ns address={{ item }} state=absent
+          loop:
+            - 2606:4700::6811:af55
+            - 30.1.1.1
+        - name: TEST4, Get real output after delete
+          command: ip net exec veth48_ns ip -o addr show dev veth48
+          register: command_res
+        - name: TEST4, assert result of removing addresses
+          assert:
+            that:
+              - '"30.1.1.1" not in command_res.stdout'
+              - "'30.2.2.2/24' in command_res.stdout"
+              - "'30.3.3.3/32' in command_res.stdout"
+              - "'2606:4700::6811:b055/128' in command_res.stdout"
+              - "'2606:4700::6811:af55/128' not in command_res.stdout"
+              - "'2606:4701::1' in command_res.stdout"
+        - name: TEST4, try flush in check_mode
+          ip_address: device=veth48 namespace=veth48_ns state=flush
+          check_mode: true
+          register: module_res
+        - name: TEST4, assert changes after flush in check_mode
+          assert:
+            that:
+              - module_res.changed
+        - name: TEST4, Get real output after check_mode flush
+          command: ip net exec veth48_ns ip -o addr show dev veth48
+          register: command_res
+        - name: TEST4, assert results after check_mode flush
+          assert:
+            that:
+              - "'30.2.2.2/24' in command_res.stdout"
+              - "'30.3.3.3/32' in command_res.stdout"
+              - "'2606:4700::6811:b055/128' in command_res.stdout"
+              - "'2606:4701::1' in command_res.stdout"
+        - name: TEST4, try real flush
+          ip_address: device=veth48 namespace=veth48_ns state=flush
+          register: module_res
+        - name: TEST4, assert changes after 1st real flush
+          assert:
+            that:
+              - module_res.changed
+        - name: TEST4, Get real output after 1st real flush
+          command: ip net exec veth48_ns ip -o addr show dev veth48
+          register: command_res
+        - name: TEST4, assert results after check_mode flush
+          assert:
+            that:
+              - "'30.2.2.2/24' not in command_res.stdout"
+              - "'30.3.3.3/32' not in command_res.stdout"
+              - "'2606:4700::6811:b055/128' not in command_res.stdout"
+              - "'2606:4701::1' not in command_res.stdout"
+        - name: TEST4, try flush in check_mode with no addresses
+          ip_address: device=veth48 namespace=veth48_ns state=flush
+          check_mode: true
+          register: module_res
+        - name: TEST4, assert no changes on empty flush in check_mode
+          assert:
+            that: not module_res.changed
+        - name: TEST4, try flush with no addresses
+          ip_address: device=veth48 namespace=veth48_ns state=flush
+          register: module_res
+        - name: TEST4, assert no changes on empty flush
+          assert:
+            that: not module_res.changed
+      always:
+        - name: TEST4, cleanup
+          command: ip net exec veth48_ns ip link del dev veth48
+          failed_when: false
+        - name: TEST4, cleanup ns
+          ip_netns: name=veth48_ns state=absent
+
+
+  when: ansible_virtualization_type | default('') != 'docker'
