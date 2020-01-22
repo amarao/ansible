@@ -602,7 +602,6 @@ EXAMPLES = """
         key: 42
 
 - name: Use type_options for misc types inside loop.
-  ip_link_device:
     name: '{{ item.name }}'
     type: '{{ item.type }}'
     type_options: '{{ item.options}}'
@@ -734,7 +733,6 @@ class LinkDevice(object):
     params_list = [  # module paramters which aren't passed to ip or special
         'name', 'namespace', 'group_id', 'state', 'type', 'link',
     ]
-
     knob_cmds = {  # module paramtes which are directly translates to ip args
         'txqueuelen': lambda len: ['txqueuelen', str(len)],
         'address': lambda addr: ['address', addr],
@@ -891,7 +889,14 @@ def main():
 
         },
         supports_check_mode=True,
-        mutually_exclusive=[['group_id', 'group'], ['name', 'group_id']],
+        mutually_exclusive=[
+            ['group_id', 'group'],
+            ['name', 'group_id'],
+            [
+                'vlan_options', 'vxlan_options', 'gre_options',
+                'gretap_options', 'type_options'
+            ]
+        ],
         required_one_of=[['name', 'group_id']],
     )
 

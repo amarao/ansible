@@ -276,5 +276,81 @@
           command: ip link delete gre99
           failed_when: false
 
+    # TEST4: Create and delete gretap interface
+    # stages:
+    # - Create gre with all reasonable GRETAP-specific options
+    # - check result
+    # - cleanup
+    - name: TEST4 - create and delete GRETAP
+      become: true
+      block:
+        - name: TEST4, create GRETAP
+          ip_link_device:
+            device: gretap99  # check if 'device' alias works
+            type: gretap
+            state: present
+            gretap_options:
+              remote: 127.0.0.2
+              local: 127.0.0.1
+              iseq: true
+              oseq: false
+              ikey: 12
+              okey: no
+              icsum: true
+              ocsum: false
+              ttl: 33
+              tos: 1
+              pmtudisc: true
+              ignore_df: true
+              dev: lo
+              # can't test 'external'
+          register: module_res
+        - name: TEST4, assert module output
+          assert:
+            that:
+              - module_res.changed
+        - name: TEST4, get results
+          command: ip -o -d link show gretap99
+          register: command_res
+        - name: TEST4, assert results
+          assert:
+            that:
+              - "'gretap99@lo:' in command_res.stdout"
+              - "'link/gretap 127.0.0.1' in command_res.stdout"
+              - "'peer 127.0.0.2' in command_res.stdout"
+              - "'dev lo' in command_res.stdout"
+              - "'ttl 33' in command_res.stdout"
+              - "'nopmtudisc' in command_res.stdout"
+              - "'ignore-df' in command_res.stdout"
+              - "'iseq' in command_res.stdout"
+              - "'icsum' in command_res.stdout"
+              - "'oseq' not in command_res.stdout"
+              - "'ocsum' not in command_res.stdout"
+        - name: TEST4, delete gretap99
+          ip_link_device:
+            name: gretap99
+            state: absent
+      always:
+        - name: TEST4 - cleanup
+          command: ip link delete gretap99
+          failed_when: false
+
+# TEST5: Create and delete vxlan intergace
+# stages:
+# - Create gre with all reasonable VXLAN-specific options
+# - check result
+# - cleanup
+- name: TEST5 - create and delete VXLAN
+  become: true
+  block:
+    - name: TEST5, create VXLAN
+      ip_link_device:
+        device: vxlan5  # check if 'device' alias works
+        type: vxlan
+        state: present
+  always:
+    - name: TEST5, cleanup
+      command: ip link delte vxlan5
+      failed_when: false
 
   when: ansible_virtualization_type | default('') != 'docker'
