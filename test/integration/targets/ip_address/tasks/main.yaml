@@ -175,19 +175,49 @@
     # - confirm changed from module
     # - confirm changes on real veth
     # - Post: delete veth
-    - name: TEST2 - assign and deassign IP with many options
+    - name: TEST3 - assign and deassign IP with many options
       become: true
       block:
-        - name: TEST2, preparation, create ns
-          ip_netns: name=veth44_ns state=present
-        - name: TEST2, preparation, veth
-          command: ip net exec veth44_ns ip link add dev veth44 type veth
+        - name: TEST3, preparation, create ns
+          ip_netns: name=veth46_ns state=present
+        - name: TEST3, preparation, veth
+          command: ip net exec veth46_ns ip link add dev veth46 type veth
+
+        - name: TEST3, try to create IPv6 with tricky set of options
+          ip_address:
+            device: veth46
+            namespace: veth46_ns
+            address: '2606:4701::1/32'
+            peer: '2606:4701::2/32'
+            metric: 32
+            valid_lft: 'forever'
+            preferred_lft: '1999'
+            home: true
+            dad: false
+            prefixroute: false
+          register: module_res
+        - name: TEST3, get actual resuts
+          command: ip net exec veth46_ns ip -o addr show dev veth46
+          register: command_res
+        - name: TEST3, assert results
+          assert:
+            that:
+              - module_res.changed
+              - '"2606:4701::1" in command_res.stdout'
+              - '"peer 2606:4701::2/32" in command_res.stdout'
+              - "'valid_lft forever' in command_res.stdout"
+              - "'preferred_lft 199' in command_res.stdout"
+              - "'metric 32' in command_res.stdout"
+              - "'nodad' in command_res.stdout"
+              - "'noprefixroute' in command_res.stdout"
+              - "'home' in command_res.stdout"
+
       always:
-        - name: TEST2, cleanup
-          command: ip net exec veth44_ns ip link del dev veth44
+        - name: TEST3, cleanup
+          command: ip net exec veth46_ns ip link del dev veth46
           failed_when: false
-        - name: TEST2, cleanup ns
-          ip_netns: name=veth44_ns state=absent
+        - name: TEST3, cleanup ns
+          ip_netns: name=veth46_ns state=absent
 
     # TEST4: Assign few ipv4 and ipv6 addresses and remove them one by one.
     # stages:

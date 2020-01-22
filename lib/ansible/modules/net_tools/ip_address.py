@@ -67,11 +67,6 @@ options:
         description:
             - Broadcast address for the interface.
 
-    anycast:
-        type: str
-        description:
-            - Anycast address for the interface.
-
     label:
         type: str
         description:
@@ -115,13 +110,6 @@ options:
             - Designates this address the "home address".
             - IPv6 only.
 
-    mngtmpaddr:
-        type: bool
-        description:
-            - Make this address a source for temporary address generation
-              for Privacy Extension.
-             - IPv6 only.
-
     dad:
         type: bool
         description:
@@ -135,17 +123,12 @@ options:
               network prefix of the address.
             - Kernel default is 'eanbled'.
 
-    autojoin:
-        type: bool
-        description:
-            - Enable join to multicast group for openvswitch interfaces.
-            - Kernel default is 'disabled'.
-
 notes:
     - All changes made by this module are not permanent and are
       lost after reboot.
-    - Additional parameters are not checked and not changed for
-      existing addresses.
+    - Address parameters are not checked and not changed for existing
+      addresses.
+    - Autojoin and mngtmpaddr options are not supported.
 """
 
 EXAMPLES = """
@@ -233,8 +216,6 @@ class Address(object):
             snippet += ['peer', str(self.peer)]
         if self.broadcast:
             snippet += ['broadcast', str(self.broadcast)]
-        if self.anycast:  # contradiction in man!
-            snippet += ['anycast', str(self.anycast)]
         if self.label:
             snippet += ['label', str(self.label)]
         if self.scope:
@@ -255,14 +236,10 @@ class Address(object):
         snippet = []
         if self.home is True:
             snippet += ['home']
-        if self.mngtmpaddr is True:
-            snippet += ['mngtmpaddr']
         if self.dad is False:
             snippet += ['nodad']
         if self.prefixroute is False:
             snippet += ['noprefixroute']
-        if self.autojoin is True:
-            snippet += ['autojoin']
         return snippet
 
     def _add(self):
@@ -330,17 +307,14 @@ def main():
             'address': {},
             'peer': {},
             'broadcast': {},
-            'anycast': {},
             'label': {},
             'scope': {},
             'metric': {'type': 'int'},
             'valid_lft': {},
             'preferred_lft': {},
             'home': {'type': 'bool'},
-            'mngtmpaddr': {'type': 'bool'},
             'dad': {'type': 'bool'},
             'prefixroute': {'type': 'bool'},
-            'autojoin': {'type': 'bool'},
         },
         supports_check_mode=True,
     )
