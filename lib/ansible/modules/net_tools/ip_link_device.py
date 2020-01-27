@@ -43,14 +43,16 @@ options:
     group_id:
         type: str
         description:
-            - Id of group of interfaces.
-            - Can be used only for I(state)=present
+            - Id of the group of interfaces to delete.
+            - Can be used only for I(state)=absent.
+            - The group 'default' contains all interfaces which aren't part
+              of some other group.
 
     namespace:
         type: str
         description:
             - Name of namespace where interface should be created/deleted.
-            - Namespace should exist
+            - Namespace should exist.
             - If interface with I(type)=veth is created in a namespace,
               peer interface is created in the same namespace
 
@@ -220,6 +222,7 @@ options:
                 type: str
                 description:
                     - Name of device to use for tunnel endpoint communication
+                    - Do not confuse with I(device), which is alias for I(name).
 
             group:
                 type: str
@@ -822,7 +825,12 @@ class LinkDevice(object):
 
     def _common_args(self):
         args = []
-        for knob_name, knob_value in self.knobs.items():
+        order = [
+            'txqueuelen', 'address', 'broadcast', 'mtu', 'index',
+            'numtxqueues', 'numrxqueues', 'gso_max_size', 'gso_max_segs'
+        ]
+        for knob_name in order:
+            knob_value = self.knobs[knob_name]
             if knob_value:
                 args.extend(self.knob_cmds[knob_name](knob_value))
         return args
@@ -830,12 +838,21 @@ class LinkDevice(object):
     def _type_args(self):
         args = ['type', self.type]
         typecmd = TYPE_COMMANDS[self.type]
-        for opt_name, opt_value in self.type_options.items():
+        for opt_name, opt_value in sorted(self.type_options.items()):
             if opt_value:
                 args.extend(typecmd[opt_name](opt_value))
         return args
 
     def _create(self):
+        # order of snippets is according to 'man ip link':
+        #        ip link add [ link DEVICE ] [ name ] NAME
+        #           [ txqueuelen PACKETS ]
+        #           [ address LLADDR ] [ broadcast LLADDR ]
+        #           [ mtu MTU ] [ index IDX ]
+        #           [ numtxqueues QUEUE_COUNT ] [ numrxqueues QUEUE_COUNT ]
+        #           [ gso_max_size BYTES ] [ gso_max_segs SEGMENTS ]
+        #           type TYPE [ ARGS ]
+
         cmd = ['ip', 'link', 'add']
         cmd += self._link_name()
         cmd += ['name', self.name]
