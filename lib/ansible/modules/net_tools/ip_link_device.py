@@ -67,7 +67,7 @@ options:
 
     type:
         type: str
-        choices: [veth, vlan, vxlan, gre, gretap]
+        choices: [veth, vlan, vxlan, gre, gretap, dummy]
         description:
             - Type of a new interface to add or delete
             - Can be specified instead of I(name) or I(group_id)
@@ -618,6 +618,11 @@ EXAMPLES = """
       type: veth
       options:
         peer_name: veth4
+
+- name: Create dummy interface
+    name: dummy3
+    type: dummy
+    state: present
 """
 
 RETURN = """
@@ -727,6 +732,7 @@ TYPE_COMMANDS = {
         'dev': lambda dev: ['dev', dev],
         'external': lambda flag: [['external'] if flag else []],
     },
+    'dummy': {},
 }
 
 
@@ -886,7 +892,9 @@ def main():
             'group_id': {},
             'namespace': {},
             'state': {'choices': ['present', 'absent'], 'required': True},
-            'type': {'choices': ['veth', 'vlan', 'vxlan', 'gre', 'gretap']},
+            'type': {'choices': [
+                'veth', 'vlan', 'vxlan', 'gre', 'gretap', 'dummy'
+            ]},
             'link': {},
             'txqueuelen': {'type': 'int'},
             'address': {},

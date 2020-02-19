@@ -354,3 +354,19 @@
       failed_when: false
 
   when: ansible_virtualization_type | default('') != 'docker'
+
+# TEST6 create dummy interface
+- name: TEST5 - create and delete VXLAN
+  become: true
+  block:
+    - name: TEST6, create dummy interface
+      ip_link_device:
+        device: dummy3
+        type: dummy
+        state: present
+  always:
+    - name: TEST5, cleanup
+      command: ip link delte dummy3
+      failed_when: false
+
+  when: ansible_virtualization_type | default('') != 'docker'
