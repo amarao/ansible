@@ -175,13 +175,21 @@ class Address(object):
             self.module.fail_json(
                 msg=to_text(
                     'State=present/absent require address.'
-            ))
+                )
+            )
         if self.address:
             if '/' not in self.address:
                 if ':' in self.address:  # IPv6
                     self.address += '/128'
                 elif '.' in self.address:  # IPv4
                     self.address += '/32'
+        prefix_length = self.address.split('/')[1]
+        if '.' in prefix_length:
+            self.module.fail_json(
+                'Dot found in prefix length. '
+                'Network masks are not supported, '
+                'use CIDR notation (a.b.c.d/z)'
+            )
 
     def _exec(self, namespace, cmd, not_found_is_ok=False):
         if namespace:
